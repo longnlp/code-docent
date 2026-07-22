@@ -12,8 +12,38 @@
  */
 
 import { RUNTIMES, resolveRuntime } from './runtime/index.js';
+import type { AgentProgress } from './runtime/types.js';
 import { runPrescan, runScan } from './pipeline/scan.js';
 import { runWrite } from './pipeline/write.js';
+
+/**
+ * Live progress printer: every event gets an elapsed-time prefix; if the
+ * runtime goes quiet (e.g. copilot -s mode has no stream), a heartbeat line
+ * shows the run is still alive.
+ */
+function progressPrinter(): { onProgress: (ev: AgentProgress) => void; done: () => void } {
+  const started = Date.now();
+  let lastEventAt = Date.now();
+  const stamp = () => {
+    const s = Math.floor((Date.now() - started) / 1000);
+    return `[${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}]`;
+  };
+  const heartbeat = setInterval(() => {
+    if (Date.now() - lastEventAt > 20_000) {
+      console.log(`  ${stamp()} … still working`);
+      lastEventAt = Date.now();
+    }
+  }, 5_000);
+  heartbeat.unref?.();
+  return {
+    onProgress: (ev) => {
+      lastEventAt = Date.now();
+      const icon = ev.kind === 'tool' ? '🔧' : ev.kind === 'status' ? '▸' : '·';
+      console.log(`  ${stamp()} ${icon} ${ev.detail.slice(0, 100)}`);
+    },
+    done: () => clearInterval(heartbeat),
+  };
+}
 
 interface Args {
   command: string;
@@ -68,14 +98,20 @@ async function main(): Promise<void> {
     case 'scan': {
       const runtime = await resolveRuntime(args.flags.runtime);
       console.log(`scanning with runtime ${runtime.name}…`);
-      const { inventoryPath, features } = await runScan(
-        need(args, 'project'),
-        need(args, 'repo'),
-        runtime,
-        args.flags.model,
-      );
-      console.log(`${features.length} features → ${inventoryPath}`);
-      console.log('review the inventory, then: codedocent write <slug> --project … --repo …');
+      const progress = progressPrinter();
+      try {
+        const { inventoryPath, features } = await runScan(
+          need(args, 'project'),
+          need(args, 'repo'),
+          runtime,
+          args.flags.model,
+          progress.onProgress,
+        );
+        console.log(`${features.length} features → ${inventoryPath}`);
+        console.log('review the inventory, then: codedocent write <slug> --project … --repo …');
+      } finally {
+        progress.done();
+      }
       break;
     }
 
@@ -87,8 +123,20 @@ async function main(): Promise<void> {
       }
       const runtime = await resolveRuntime(args.flags.runtime);
       console.log(`tracing + writing "${slug}" with runtime ${runtime.name}…`);
-      const out = await runWrite(need(args, 'project'), need(args, 'repo'), slug, runtime, args.flags.model);
-      console.log(`draft written to ${out}`);
+      const progress = progressPrinter();
+      try {
+        const out = await runWrite(
+          need(args, 'project'),
+          need(args, 'repo'),
+          slug,
+          runtime,
+          args.flags.model,
+          progress.onProgress,
+        );
+        console.log(`draft written to ${out}`);
+      } finally {
+        progress.done();
+      }
       break;
     }
 

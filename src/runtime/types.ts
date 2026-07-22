@@ -8,6 +8,12 @@
 
 export type AgentRole = 'scanner' | 'tracer' | 'writer' | 'distiller' | 'answerer';
 
+export interface AgentProgress {
+  /** 'tool' = the agent used a tool; 'status' = lifecycle note; 'text' = partial output. */
+  kind: 'tool' | 'status' | 'text';
+  detail: string;
+}
+
 export interface AgentTask {
   role: AgentRole;
   /** Fully assembled instructions (task + skills + output contract). */
@@ -22,6 +28,8 @@ export interface AgentTask {
   /** Cap on agentic tool-use turns (ignored by pure text tasks). */
   maxTurns?: number;
   timeoutMs?: number;
+  /** Live progress events (tool calls, status) — adapters emit best-effort. */
+  onProgress?: (ev: AgentProgress) => void;
 }
 
 export interface AgentUsage {

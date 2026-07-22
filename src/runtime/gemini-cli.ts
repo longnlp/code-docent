@@ -37,6 +37,10 @@ export class GeminiCliRuntime implements AgentRuntime {
     const r = await runSubprocess(bin(), args, {
       cwd: task.repoDir,
       timeoutMs: task.timeoutMs ?? 900_000,
+      // gemini streams its output progressively; surface a truncated peek
+      onStdoutLine: task.onProgress
+        ? (line) => line.trim() && task.onProgress!({ kind: 'text', detail: line.trim().slice(0, 80) })
+        : undefined,
     });
     if (r.code !== 0) {
       throw new RuntimeError(this.name, `exit ${r.code}: ${r.stderr.slice(0, 500) || r.stdout.slice(0, 500)}`);

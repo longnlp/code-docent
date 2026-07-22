@@ -69,6 +69,10 @@ export class OpenAiApiRuntime implements AgentRuntime {
           } catch {
             /* leave empty; tool reports the error */
           }
+          task.onProgress?.({
+            kind: 'tool',
+            detail: `${call.function.name} ${input.path ?? input.pattern ?? ''}`.trim(),
+          });
           messages.push({
             role: 'tool',
             tool_call_id: call.id,

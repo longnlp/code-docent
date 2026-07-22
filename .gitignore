@@ -1,0 +1,30 @@
+# Dependencies / build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Environment & secrets (F2/F8: keys live in .env, never in git)
+.env
+.env.*
+!.env.example
+
+# Fixture repos — cloned on demand, see README
+fixtures/
+
+# Workspace: repo checkouts and disposable test-run output are untracked;
+# curated workspaces (skills/drafts/published, e.g. workspace/radarr) ARE tracked
+workspace/*/repo
+workspace/*-test/
+
+# Logs & coverage
+*.log
+coverage/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code machine-local settings (permissions granted on this machine)
+.claude/settings.local.json

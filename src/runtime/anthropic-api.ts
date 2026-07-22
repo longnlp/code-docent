@@ -57,11 +57,18 @@ export class AnthropicApiRuntime implements AgentRuntime {
         messages.push({ role: 'assistant', content: data.content });
         const results = data.content
           .filter((b: any) => b.type === 'tool_use')
-          .map((b: any) => ({
-            type: 'tool_result',
-            tool_use_id: b.id,
-            content: runRepoTool(task.repoDir!, b.name, b.input ?? {}),
-          }));
+          .map((b: any) => {
+            const input = b.input ?? {};
+            task.onProgress?.({
+              kind: 'tool',
+              detail: `${b.name} ${input.path ?? input.pattern ?? ''}`.trim(),
+            });
+            return {
+              type: 'tool_result',
+              tool_use_id: b.id,
+              content: runRepoTool(task.repoDir!, b.name, input),
+            };
+          });
         messages.push({ role: 'user', content: results });
         continue;
       }

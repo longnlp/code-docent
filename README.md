@@ -49,6 +49,38 @@ usable runtime is picked. All learned knowledge lives in markdown skill files
 Agents run **read-only** against the repo in every runtime (native tool permissions
 for the SDK/CLIs; a sandboxed tool loop for the raw APIs).
 
+### Setting up the terminal-CLI runtimes
+
+**Claude Code CLI** (`claude-cli` runtime — works with a Claude subscription, no API key):
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude                      # first run: log in (Claude Pro/Max or Console account)
+npx tsx src/cli.ts doctor   # should show ✅ claude-cli
+CODEDOCENT_RUNTIME=claude-cli npx tsx src/cli.ts scan --project myapp --repo /path/to/repo
+```
+
+Under the hood CodeDocent runs `claude -p <prompt> --output-format json
+--allowedTools Read,Glob,Grep` with the repo as working directory — read-only,
+using whatever auth the CLI has.
+
+**GitHub Copilot CLI** (`copilot-cli` runtime — works with a Copilot subscription):
+
+```bash
+npm install -g @github/copilot
+copilot                     # first run: /login (GitHub device flow)
+                            # or set COPILOT_GITHUB_TOKEN / GH_TOKEN instead
+npx tsx src/cli.ts doctor   # should show ✅ copilot-cli
+CODEDOCENT_RUNTIME=copilot-cli npx tsx src/cli.ts scan --project myapp --repo /path/to/repo
+```
+
+Under the hood: `copilot -p <prompt> -s --allow-tool read --deny-tool write
+--deny-tool shell --add-dir <repo>`. Pick a model with `--model` (e.g.
+`--model claude-sonnet-4.6` or `gpt-5.2` — whatever your Copilot plan offers).
+
+Gemini CLI is analogous: `npm install -g @google/gemini-cli`, log in or set
+`GEMINI_API_KEY`, select `gemini-cli`.
+
 ## Workspace layout
 
 ```

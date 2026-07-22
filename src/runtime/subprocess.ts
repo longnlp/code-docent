@@ -9,7 +9,13 @@ export interface SubprocessResult {
 export function runSubprocess(
   cmd: string,
   args: string[],
-  opts: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
+  opts: {
+    cwd?: string;
+    timeoutMs?: number;
+    env?: NodeJS.ProcessEnv;
+    /** Called for each complete stdout line as it arrives (streaming). */
+    onStdoutLine?: (line: string) => void;
+  } = {},
 ): Promise<SubprocessResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -19,11 +25,22 @@ export function runSubprocess(
     });
     let stdout = '';
     let stderr = '';
+    let lineBuf = '';
     const timeout = setTimeout(() => {
       child.kill('SIGKILL');
       reject(new Error(`${cmd} timed out after ${opts.timeoutMs}ms`));
     }, opts.timeoutMs ?? 600_000);
-    child.stdout.on('data', (d) => (stdout += d));
+    child.stdout.on('data', (d) => {
+      stdout += d;
+      if (opts.onStdoutLine) {
+        lineBuf += d;
+        let nl;
+        while ((nl = lineBuf.indexOf('\n')) >= 0) {
+          opts.onStdoutLine(lineBuf.slice(0, nl));
+          lineBuf = lineBuf.slice(nl + 1);
+        }
+      }
+    });
     child.stderr.on('data', (d) => (stderr += d));
     child.on('error', (err) => {
       clearTimeout(timeout);

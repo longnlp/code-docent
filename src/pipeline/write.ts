@@ -7,7 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import YAML from 'yaml';
-import type { AgentRuntime } from '../runtime/types.js';
+import type { AgentRuntime, AgentProgress } from '../runtime/types.js';
 import { tracerPrompt, writerPrompt, type FeatureSpec } from './prompts.js';
 import { openWorkspace, loadSkills, repoCommit, logRun } from './workspace.js';
 import { extractFenced, loadInventory } from './scan.js';
@@ -26,6 +26,7 @@ export async function runWrite(
   slug: string,
   runtime: AgentRuntime,
   model?: string,
+  onProgress?: (ev: AgentProgress) => void,
 ): Promise<string> {
   const ws = openWorkspace(project);
   const feature: FeatureSpec = loadInventory(ws).find((f) => f.slug === slug) ?? {
@@ -39,12 +40,14 @@ export async function runWrite(
   let facts: Fact[];
   let factsYaml: string;
   try {
+    onProgress?.({ kind: 'status', detail: 'Pass 2a — tracing the feature slice' });
     const traced = await runtime.run({
       role: 'tracer',
       prompt: tracerPrompt(feature, skills, commit),
       repoDir,
       model,
       maxTurns: 60,
+      onProgress,
     });
     logRun(ws, 'tracer', `write ${slug}`, traced);
 
@@ -65,10 +68,12 @@ export async function runWrite(
   // Pass 2b — render (no repo access: facts are the only source of truth)
   let body: string;
   try {
+    onProgress?.({ kind: 'status', detail: `Pass 2b — rendering page from ${facts.length} facts` });
     const written = await runtime.run({
       role: 'writer',
       prompt: writerPrompt(feature, factsYaml, skills),
       model,
+      onProgress,
     });
     logRun(ws, 'writer', `write ${slug}`, written);
     body = written.text.trim();

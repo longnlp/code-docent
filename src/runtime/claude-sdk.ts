@@ -42,6 +42,15 @@ export class ClaudeSdkRuntime implements AgentRuntime {
     let usage = { inputTokens: 0, outputTokens: 0, costUsd: undefined as number | undefined };
 
     for await (const message of query({ prompt: task.prompt, options }) as AsyncIterable<any>) {
+      if (message.type === 'assistant' && task.onProgress) {
+        for (const block of message.message?.content ?? []) {
+          if (block.type === 'tool_use') {
+            const input = block.input ?? {};
+            const detail = input.file_path ?? input.path ?? input.pattern ?? input.query ?? '';
+            task.onProgress({ kind: 'tool', detail: `${block.name} ${detail}`.trim() });
+          }
+        }
+      }
       if (message.type === 'result') {
         if (message.subtype !== 'success') {
           throw new RuntimeError(this.name, `run ended with ${message.subtype}`);

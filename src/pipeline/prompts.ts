@@ -17,6 +17,7 @@ export interface FeatureSpec {
 
 export function scannerPrompt(pre: PrescanReport, skills: string, commit: string): string {
   return `You are the feature-inventory scanner of a documentation generator. You are inside a code repository (read-only). Commit: ${commit}.
+Your ONLY tools are Read, Glob, and Grep — do not attempt Bash or any other tool; such calls are denied and waste turns.
 
 A deterministic pre-scan already extracted this skeleton — trust it and start from these entry points instead of exploring blindly:
 
@@ -39,6 +40,7 @@ No other commentary. Every feature MUST have at least one entry point or code ar
 
 export function tracerPrompt(feature: FeatureSpec, skills: string, commit: string, factStartId = 1): string {
   return `You are the evidence-collector of a documentation generator. You are inside a code repository (read-only). Commit: ${commit}.
+Your ONLY tools are Read, Glob, and Grep — do not attempt Bash or any other tool; such calls are denied and waste turns.
 
 Project skill files (obey repo-map hints and exclusions; the style guide tells you what the eventual audience cares about):
 

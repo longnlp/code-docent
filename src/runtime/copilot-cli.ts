@@ -28,6 +28,10 @@ export class CopilotCliRuntime implements AgentRuntime {
 
   async run(task: AgentTask): Promise<AgentResult> {
     const started = Date.now();
+    task.onProgress?.({
+      kind: 'status',
+      detail: 'copilot -s mode has no live stream — heartbeat only until it finishes',
+    });
     const args = ['-p', task.prompt, '-s', '--deny-tool', 'write', '--deny-tool', 'shell'];
     if (task.repoDir) {
       args.push('--allow-tool', 'read', '--add-dir', task.repoDir);

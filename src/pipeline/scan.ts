@@ -6,7 +6,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { AgentRuntime } from '../runtime/types.js';
+import type { AgentRuntime, AgentProgress } from '../runtime/types.js';
 import { prescan } from './prescan.js';
 import { scannerPrompt, type FeatureSpec } from './prompts.js';
 import { openWorkspace, loadSkills, repoCommit, logRun, type Workspace } from './workspace.js';
@@ -30,6 +30,7 @@ export async function runScan(
   repoDir: string,
   runtime: AgentRuntime,
   model?: string,
+  onProgress?: (ev: AgentProgress) => void,
 ): Promise<{ inventoryPath: string; features: FeatureSpec[] }> {
   const ws = openWorkspace(project);
   const report = prescan(repoDir);
@@ -40,7 +41,7 @@ export async function runScan(
 
   let features: FeatureSpec[] = [];
   try {
-    const result = await runtime.run({ role: 'scanner', prompt, repoDir, model, maxTurns: 30 });
+    const result = await runtime.run({ role: 'scanner', prompt, repoDir, model, maxTurns: 30, onProgress });
     logRun(ws, 'scanner', 'scan', result);
 
     const json = extractFenced(result.text, 'json');
