@@ -93,6 +93,57 @@ Rules that make the adapters swappable:
   to prove the interface before more are built. Raw-API adapters need the most work
   (we own the agent loop) — do those last.
 
+### D6. No pre-built code graph — agentic navigation, with an optional lightweight index
+
+Should we parse the whole repo into a resolved **code graph** (ASTs, resolved symbols,
+call chains) *before* generating docs — the "compiler approach" Driver AI and
+understand-anything take — or trace the code on demand with an agent?
+
+**Decision: trace on demand (agentic navigation). Do NOT build a code graph first.**
+Add a *lightweight* symbol/reference index later, only if a concrete need proves it.
+A full resolved call graph (Tier 2 below) is explicitly out of scope unless a failure
+forces it.
+
+Why — grounded in this project's own evidence:
+- We already produced two deeply-traced pages (`adding-movies`, 53 facts; `calendar`,
+  30 facts) with **no graph at all** — just read/grep/glob. The agent followed real
+  causal chains across files (UI → API → service → validator → localization string →
+  test) the way an engineer does, and even surfaced non-obvious truths (duplicate
+  detection lives in the controller's validator not the service; the error string is
+  hardcoded not localized; the auto-search only runs when available *and* monitored).
+  Empirically, **a graph is not required for excellent product-behavior docs.**
+- We are multi-language (C# + React today, more later). A resolved graph needs a real
+  compiler front-end **per language** (Roslyn, ts-morph, …) — a large, brittle
+  investment (generics, DI, dynamic dispatch, reflection are where it breaks). That cost
+  buys precision our audience-first docs mostly don't need.
+- Agentic tracing is cheap to start (no indexing step), language-agnostic, and robust to
+  code it doesn't fully "understand" — it just reads more.
+
+What we build **instead** of a syntactic graph: a **behavioral graph**. The fact sheet
+(facts + code anchors) per feature *is* a curated, behavior-level subgraph — exactly the
+edges that serve product docs, and nothing more. Pass 0's `IHandle<Event>` / mechanism
+detection is already a proto-edge set.
+
+The tiered path (adopt upward only when a need appears):
+- **Tier 0 — agentic navigation (current).** read/grep/glob on demand. The default.
+  Sufficient for generation quality; proven.
+- **Tier 1 — lightweight symbol/reference index (recommended *when* needed, not now).**
+  A cheap `tree-sitter`-based "jump-to-definition / find-references" index (definitions,
+  textual references, and framework edges like interface→impl and event→handler) — *not*
+  full type resolution. It turns the agent's grep-guessing into targeted lookups. Its
+  strongest payoff is **two specific places**, and we adopt it there first:
+  1. *Completeness of "who calls / who handles this"* — grep misses interface dispatch,
+     DI polymorphism, and event wiring; an edge index makes handler/effect discovery
+     exhaustive (helps the background-job work directly).
+  2. *Incremental-update precision (C1/D3)* — find-references maps a changed symbol to
+     every use → the exact set of affected pages, sharper than anchor line-overlap alone.
+- **Tier 2 — full resolved call graph (avoid for now).** The Driver-style compiler
+  approach. Revisit only if coverage gaps or update imprecision prove Tier 1 insufficient.
+
+Net: generation ships on Tier 0; a Tier-1 index is a targeted enhancement for
+completeness and sync precision, added incrementally — never a prerequisite that blocks
+the first useful wiki.
+
 ## System components
 
 ```

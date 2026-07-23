@@ -37,6 +37,13 @@ render what the fact sheet supports, and every fact knows where in the code it c
 Agentic tracing with read/grep/glob is how coding agents already navigate repos
 effectively — we're pointing the same capability at explanation instead of editing.
 
+**We do not pre-build a code graph** (resolved ASTs / call chains) to do this — see
+[04-architecture.md → D6](04-architecture.md#d6-no-pre-built-code-graph--agentic-navigation-with-an-optional-lightweight-index).
+Short version: the agent traces the logic on demand the way an engineer does, and the
+fact sheet (facts + anchors) *is* our behavioral graph. A lightweight symbol/reference
+index is an optional later enhancement for caller-completeness and update precision, not
+a prerequisite.
+
 ## The four passes
 
 ### Pass 0 — Deterministic pre-scan (no LLM, ~free)
