@@ -96,6 +96,7 @@
     "src/NzbDrone.Core/Jobs/TaskManager.cs"
   ],
   "backgroundJobFiles": [
+    "src/NzbDrone.Host/AppLifetime.cs",
     "src/NzbDrone.Core/Update/InstallUpdateService.cs",
     "src/NzbDrone.Core/Qualities/QualityDefinitionService.cs",
     "src/NzbDrone.Core/Movies/MoveMovieService.cs",
@@ -126,7 +127,8 @@
     "src/NzbDrone.Core/Blocklisting/BlocklistService.cs",
     "src/NzbDrone.Core/Backup/BackupService.cs",
     "src/NzbDrone.Common/TPL/LimitedConcurrencyLevelTaskScheduler.cs",
-    "frontend/src/Components/Page/Header/fuse.worker.ts"
+    "src/NzbDrone/WindowsApp.cs",
+    "src/NzbDrone/SysTray/SysTrayApp.cs"
   ],
   "eventHandlerCount": 52,
   "healthCheckCount": 38,

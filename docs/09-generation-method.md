@@ -84,6 +84,31 @@ attached.
 > the "how often does it…?" / "when does it back up?" questions support fields. Pass 0
 > now detects them and Pass 1 gives them first-class features.
 
+> **Detecting jobs that aren't named like jobs (added 2026-07-23):** naming
+> conventions (`*Job`, `*Task`, `*Worker`) are fragile — a job class called
+> `NightlyReconciler` or `Sweeper` has no such suffix. Background work is identified by
+> **how it is wired, not what it is named**, so detection is layered:
+> 1. **Mechanism markers (Pass 0, deterministic).** Cross-ecosystem markers for the
+>    *wiring*, not the name: `new ScheduledTask`/`AddHostedService`/`IHostedService`
+>    (.NET), `RecurringJob`/`BackgroundJob` (Hangfire), `@Scheduled`/`@Async` (Spring),
+>    `@shared_task`/`beat_schedule` (Celery), `add_job`/`BackgroundScheduler`
+>    (APScheduler), `cron.schedule`/`@Cron`/`new Worker` (node-cron/NestJS/BullMQ),
+>    `Sidekiq::Job`/`perform_async` (Ruby), `time.NewTicker`/`gocron` (Go),
+>    `@KafkaListener`/`@RabbitListener` (message consumers).
+> 2. **Wiring & infra hubs.** The DI/startup registration and out-of-code schedule
+>    declarations — Procfile workers, Kubernetes `CronJob`, crontab/systemd `.timer`,
+>    cron config — list every job by reference regardless of class name.
+> 3. **Agent discovery (Pass 1).** Pass 0 lists are *starting points*; the scanner is
+>    told to grep the mechanisms itself, read the wiring/infra, and follow each
+>    registration to its implementation whatever it's called. The agent is the
+>    generalizer; the deterministic scan just seeds it cheaply.
+> 4. **Human backstop.** `repo-map.md` background-location hints, and the gap loop: a
+>    question about automatic behavior that can't be answered → admin locates the code →
+>    records a hint → the job becomes discoverable forever after.
+>
+> Frontend trees are excluded from all of this so web-side `setInterval`/web-workers
+> don't masquerade as backend jobs.
+
 Output goes to the **admin for review** and becomes `taxonomy.md` — steering here is
 cheap; correcting 40 wrongly-scoped pages later is not.
 

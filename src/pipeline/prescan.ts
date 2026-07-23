@@ -17,6 +17,45 @@ const SOURCE_EXTS = new Set([
   '.vue', '.svelte', '.kt', '.swift', '.rs', '.cpp', '.c', '.h',
 ]);
 
+// Background work is identified by HOW IT IS WIRED, not by what it is named —
+// a job class called `NightlyReconciler` has no "job"/"task" in its name but is
+// still discoverable via its scheduling/registration mechanism. These marker
+// lists make detection name-agnostic across ecosystems.
+
+// Schedule DECLARATION markers — the registration site where recurring/
+// background work is wired up. Highest signal: the scanner reads these files to
+// enumerate what runs automatically and how often, regardless of class names.
+const SCHEDULE_DECL_MARKERS = [
+  'new ScheduledTask',                                   // .NET (this codebase)
+  'AddHostedService',                                    // .NET generic host
+  'RecurringJob.', 'BackgroundJob.Schedule',             // Hangfire
+  'beat_schedule', 'add_periodic_task',                  // Celery beat
+  'BackgroundScheduler', 'BlockingScheduler', '.add_job(', // APScheduler
+  'cron.schedule', 'new CronJob(', 'node-cron',          // node-cron
+  '@Scheduled',                                          // Spring
+  'sidekiq-scheduler', 'config.cron',                    // Ruby (sidekiq-scheduler)
+  'gocron', 'cron.New(',                                 // Go
+];
+
+// IMPLEMENTATION markers — the code IS background/async work, whatever it is
+// named. Feeds the candidate job-file list.
+const BG_IMPL_MARKERS = [
+  'BackgroundService', 'IHostedService',                 // .NET
+  '@shared_task', '@app.task', '@celery',                // Celery
+  '@Cron(', '@Interval(', '@Timeout(', 'WorkerHost',     // NestJS schedule
+  'new Worker(', 'agenda.define',                        // BullMQ / Agenda
+  '@Async', '@KafkaListener', '@RabbitListener', 'implements Job', // Java
+  'Sidekiq::Job', 'Sidekiq::Worker', 'ActiveJob::Base', 'perform_async', // Ruby
+  'time.NewTicker', 'time.Tick(',                        // Go
+];
+
+// Infra that declares schedules outside code (highest-signal, name-proof).
+const INFRA_SCHEDULE_NAME = /(^|[/\\])(Procfile|crontab)$|\.(timer|cron)$/i;
+
+// Background jobs live server-side; skip web/UI trees so setInterval, web
+// workers, etc. don't pollute the signal.
+const FRONTEND_SEGMENTS = new Set(['frontend', 'client', 'web', 'webapp', 'ui', 'public', 'static', 'assets']);
+
 export interface PrescanReport {
   repoDir: string;
   fileCount: number;
@@ -63,7 +102,7 @@ export function prescan(repoDir: string): PrescanReport {
   const langCounts: Record<string, number> = {};
   const routeFiles: string[] = [];
   const controllerFiles: string[] = [];
-  const scheduledTaskRegistrars: string[] = [];
+  const scheduleDeclSet = new Set<string>();
   const backgroundJobSet = new Set<string>();
   const localizationFiles: string[] = [];
   const testDirSet = new Set<string>();
@@ -84,6 +123,8 @@ export function prescan(repoDir: string): PrescanReport {
   const isTestPath = (rel: string): boolean =>
     rel.split(path.sep).some((s) => /(^|\.)tests?$/i.test(s)) ||
     /(Fixture|Tests?|\.spec|\.test)\.[a-z]+$/i.test(path.basename(rel));
+  const isFrontendPath = (rel: string): boolean =>
+    rel.split(path.sep).some((s) => FRONTEND_SEGMENTS.has(s.toLowerCase()));
 
   for (const file of walk(repoDir)) {
     fileCount++;
@@ -97,27 +138,41 @@ export function prescan(repoDir: string): PrescanReport {
     if (/routes?\.(tsx?|jsx?)$/i.test(base)) routeFiles.push(rel);
     if (base.endsWith('Controller.cs')) controllerFiles.push(rel);
     if (ext === '.json' && /(localization|locales|i18n|lang)/i.test(rel)) localizationFiles.push(rel);
+    // Infra that declares schedules outside code (crontab, systemd timer, …).
+    if (INFRA_SCHEDULE_NAME.test(rel) && !rel.startsWith('.github')) scheduleDeclSet.add(rel);
     const testFile = isTestPath(rel);
-    if (JOB_NAME_RE.test(base) && !testFile) backgroundJobSet.add(rel);
+    const frontendFile = isFrontendPath(rel);
+    if (JOB_NAME_RE.test(base) && !testFile && !frontendFile) backgroundJobSet.add(rel);
     if (testFile) {
       const segs = rel.split(path.sep);
       const idx = segs.findIndex((s: string) => /(^|\.)tests?$/i.test(s));
       if (idx >= 0) testDirSet.add(segs.slice(0, idx + 1).join(path.sep));
     }
 
-    // Precise .NET content detection (one read per file, reused for all
-    // markers). Test files are excluded so behavior signals stay clean.
-    if (ext === '.cs' && !testFile) {
+    // Content detection over server-side source (one read per file, reused for
+    // all markers). Tests and frontend are excluded so signals stay clean.
+    // Name-agnostic: matches how background work is WIRED, not what it's called.
+    const scanContent =
+      (SOURCE_EXTS.has(ext) && !testFile && !frontendFile) ||
+      (/\.ya?ml$/i.test(ext) && !rel.startsWith('.github'));
+    if (scanContent) {
       try {
         if (fs.statSync(file).size < 200_000) {
           const content = fs.readFileSync(file, 'utf8');
-          if (content.includes('AbstractValidator')) validatorFileCount++;
-          // Registration site (`new ScheduledTask { Interval = ... }`), not
-          // every file that merely references the type.
-          if (content.includes('new ScheduledTask')) scheduledTaskRegistrars.push(rel);
-          if (/:\s*ICommand\b/.test(content) || content.includes('IExecute<')) backgroundJobSet.add(rel);
-          if (content.includes('IHandle<')) eventHandlerCount++;
-          if (content.includes('IProvideHealthCheck') || content.includes('HealthCheckBase')) healthCheckCount++;
+          // Cross-ecosystem, name-agnostic markers.
+          if (SCHEDULE_DECL_MARKERS.some((m) => content.includes(m))) scheduleDeclSet.add(rel);
+          if (BG_IMPL_MARKERS.some((m) => content.includes(m))) backgroundJobSet.add(rel);
+          // Kubernetes CronJob / compose worker schedules declared in YAML.
+          if (/\.ya?ml$/i.test(ext) && /kind:\s*CronJob|schedule:\s*["']?\S/.test(content)) {
+            scheduleDeclSet.add(rel);
+          }
+          // Precise .NET signals (this codebase's stack).
+          if (ext === '.cs') {
+            if (content.includes('AbstractValidator')) validatorFileCount++;
+            if (/:\s*ICommand\b/.test(content) || content.includes('IExecute<')) backgroundJobSet.add(rel);
+            if (content.includes('IHandle<')) eventHandlerCount++;
+            if (content.includes('IProvideHealthCheck') || content.includes('HealthCheckBase')) healthCheckCount++;
+          }
         }
       } catch {
         /* skip unreadable */
@@ -148,7 +203,7 @@ export function prescan(repoDir: string): PrescanReport {
     frameworks,
     routeFiles: routeFiles.slice(0, 20),
     controllerFiles: controllerFiles.slice(0, 100),
-    scheduledTaskRegistrars: scheduledTaskRegistrars.slice(0, 8),
+    scheduledTaskRegistrars: [...scheduleDeclSet].slice(0, 12),
     backgroundJobFiles: [...backgroundJobSet].slice(0, 80),
     eventHandlerCount,
     healthCheckCount,

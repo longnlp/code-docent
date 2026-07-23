@@ -31,10 +31,16 @@ Task: cluster the product's behavior into PRODUCT FEATURES — the units a produ
 
 Cover ALL THREE kinds of entry point, not just the UI:
 1. **User-facing screens** — UI routes and the API controllers behind them.
-2. **Background / automatic behavior** — scheduled tasks and background jobs that run on their own with no user click. READ the scheduledTaskRegistrars file(s) above to enumerate what runs automatically and how often (e.g. periodic release searches, backups, library refresh, cleanup/housekeeping, import-list sync, update checks). These are real features users ask about ("how often does it check?", "when does it back up?") — give them their own feature entries, grouped sensibly. Also account for health/monitoring checks and significant event-driven behavior.
+2. **Background / automatic behavior** — scheduled tasks and background jobs that run on their own with no user click. These are real features users ask about ("how often does it check?", "when does it back up?") — give them their own feature entries, grouped sensibly. Also account for health/monitoring checks and significant event-driven behavior.
 3. Anything in backgroundJobFiles that is product-meaningful but not tied to a screen.
 
-Read the registrar and a few page/controller/job files as needed.
+DISCOVERING BACKGROUND WORK — do this actively; do NOT rely on file names. A background job may be named anything (NightlyReconciler, Sweeper, DoWork) — it is identified by HOW IT IS WIRED, not what it is called. The scheduledTaskRegistrars / backgroundJobFiles lists above are starting points, not the full set. Also:
+- READ the scheduled-task registrar(s) and any application startup / dependency-injection wiring to enumerate everything registered to run, then follow each registration to its implementation regardless of its name.
+- GREP for the scheduling/queue mechanisms this stack uses, e.g.: new ScheduledTask, AddHostedService, BackgroundService/IHostedService, RecurringJob./BackgroundJob (Hangfire), @Scheduled/@Async (Spring), @shared_task/@app.task/beat_schedule (Celery), add_job/BackgroundScheduler (APScheduler), cron.schedule/new CronJob/@Cron (node-cron/NestJS), new Worker(/Queue (BullMQ), Sidekiq::Job/perform_async/ActiveJob (Ruby), time.NewTicker/gocron (Go), @KafkaListener/@RabbitListener (message consumers).
+- CHECK infra for schedules declared outside code: Procfile worker processes, Kubernetes CronJob manifests, crontab / systemd .timer files, cron config.
+- Obey any background-location hints in the repo-map skill file above.
+
+Read the registrar, startup wiring, infra, and a few page/controller/job files as needed.
 
 Output EXACTLY this structure:
 1. A markdown table: | # | Feature | User entry points | Key code areas |
