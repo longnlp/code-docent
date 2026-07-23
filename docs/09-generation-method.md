@@ -47,21 +47,51 @@ Cheap static extraction builds a skeleton before any model call, because grep/AS
 - File tree, languages, frameworks (detects ASP.NET Core + React here).
 - **API surface**: controllers, `[Route]`/`[HttpGet]` attributes, minimal-API mappings.
 - **UI surface**: React Router routes → pages; form components.
+- **Background surface**: scheduled-task registration sites (`new ScheduledTask`,
+  `IHostedService`, cron/`@Scheduled`), command/job/worker files, event handlers, and
+  health checks. This is behavior with *no* UI route or controller — it would otherwise
+  be invisible to an entry-point scan (see note below).
 - **User-facing strings**: i18n/localization files, error message constants, validation
   messages — these are gold, they're *already product language*.
 - **Rules candidates**: DataAnnotations/FluentValidation validators, enums (state
   machines), config keys and feature flags.
+- Test files are excluded from all behavior signals so counts/lists stay clean.
 - Applies `repo-map.md` hints and exclusions from the start.
 
 ### Pass 1 — Feature inventory (scanner agent)
 
-Entry-point driven: every UI route and endpoint cluster is a candidate feature. The
-agent reads route definitions, page components, and controller names, then clusters
-them into product features ("Movie management", "Quality profiles", "Notifications"…)
-with their entry points and key code locations attached.
+Entry-point driven across **three** kinds of entry point, not just the UI:
+
+1. **User-facing screens** — UI routes and the API controllers behind them.
+2. **Background / automatic behavior** — scheduled tasks and jobs that run on their own
+   with no user click. The scanner reads the scheduled-task registrar(s) surfaced by
+   Pass 0 to enumerate what runs automatically and how often (periodic release searches,
+   backups, library refresh, housekeeping/cleanup, import-list sync, update checks) and
+   gives them their own feature entries. Health checks and significant event-driven
+   behavior are covered here too.
+3. **Anything else product-meaningful** not tied to a screen.
+
+The agent clusters these into product features ("Adding movies", "Automatic release
+searching", "Backups & maintenance"…) with their entry points and key code locations
+attached.
+
+> **Why the third type matters (added 2026-07-23):** the original scanner clustered only
+> UI routes + controllers, so standalone jobs were missed — on Radarr that meant 11
+> scheduled tasks, ~38 health checks, and ~52 event handlers with no page of their own.
+> Background behavior downstream of a user action still showed up inside that feature's
+> lifecycle section (e.g. RSS sync in the Calendar page), but jobs with no user trigger
+> (backups, housekeeping, recycle-bin cleanup, update checks) were invisible — exactly
+> the "how often does it…?" / "when does it back up?" questions support fields. Pass 0
+> now detects them and Pass 1 gives them first-class features.
 
 Output goes to the **admin for review** and becomes `taxonomy.md` — steering here is
 cheap; correcting 40 wrongly-scoped pages later is not.
+
+For a background/automatic feature, the Pass 2 trace centers on: what **triggers** it
+(schedule + exact interval, or which event) and whether that interval is configurable;
+what it **does**, step by step; what the user can **see or control** (settings,
+System→Tasks / Activity / History screens, health warnings) and where; and its failure
+modes.
 
 ### Pass 2 — Per-feature vertical slice (writer agent, the core pass)
 

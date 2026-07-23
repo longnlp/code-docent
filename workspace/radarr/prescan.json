@@ -91,6 +91,45 @@
     "src/Radarr.Api.V3/AutoTagging/AutoTaggingController.cs",
     "src/NzbDrone.Core/Datastore/Migration/Framework/MigrationController.cs"
   ],
+  "scheduledTaskRegistrars": [
+    "src/NzbDrone.Core/Jobs/ScheduledTaskRepository.cs",
+    "src/NzbDrone.Core/Jobs/TaskManager.cs"
+  ],
+  "backgroundJobFiles": [
+    "src/NzbDrone.Core/Update/InstallUpdateService.cs",
+    "src/NzbDrone.Core/Qualities/QualityDefinitionService.cs",
+    "src/NzbDrone.Core/Movies/MoveMovieService.cs",
+    "src/NzbDrone.Core/Movies/RefreshCollectionService.cs",
+    "src/NzbDrone.Core/Movies/RefreshMovieService.cs",
+    "src/NzbDrone.Core/Messaging/Commands/CleanupCommandMessagingService.cs",
+    "src/NzbDrone.Core/Messaging/Commands/CommandExecutor.cs",
+    "src/NzbDrone.Core/Messaging/Commands/IExecute.cs",
+    "src/NzbDrone.Core/Messaging/Commands/TestCommandExecutor.cs",
+    "src/NzbDrone.Core/Messaging/Commands/UnknownCommandExecutor.cs",
+    "src/NzbDrone.Core/MediaFiles/DiskScanService.cs",
+    "src/NzbDrone.Core/MediaFiles/DownloadedMovieCommandService.cs",
+    "src/NzbDrone.Core/MediaFiles/RecycleBinProvider.cs",
+    "src/NzbDrone.Core/MediaFiles/RenameMovieFileService.cs",
+    "src/NzbDrone.Core/MediaFiles/MovieImport/Manual/ManualImportService.cs",
+    "src/NzbDrone.Core/Lifecycle/LifecycleService.cs",
+    "src/NzbDrone.Core/Jobs/Scheduler.cs",
+    "src/NzbDrone.Core/Instrumentation/DeleteLogFilesService.cs",
+    "src/NzbDrone.Core/Instrumentation/LogService.cs",
+    "src/NzbDrone.Core/Indexers/RssSyncService.cs",
+    "src/NzbDrone.Core/IndexerSearch/MoviesSearchService.cs",
+    "src/NzbDrone.Core/ImportLists/ImportListSyncService.cs",
+    "src/NzbDrone.Core/Housekeeping/HousekeepingService.cs",
+    "src/NzbDrone.Core/HealthCheck/HealthCheckService.cs",
+    "src/NzbDrone.Core/Download/DownloadProcessingService.cs",
+    "src/NzbDrone.Core/Download/TrackedDownloads/DownloadMonitoringService.cs",
+    "src/NzbDrone.Core/Configuration/ConfigFileProvider.cs",
+    "src/NzbDrone.Core/Blocklisting/BlocklistService.cs",
+    "src/NzbDrone.Core/Backup/BackupService.cs",
+    "src/NzbDrone.Common/TPL/LimitedConcurrencyLevelTaskScheduler.cs",
+    "frontend/src/Components/Page/Header/fuse.worker.ts"
+  ],
+  "eventHandlerCount": 52,
+  "healthCheckCount": 38,
   "localizationFiles": [
     "src/NzbDrone.Core/Localization/Core/ar.json",
     "src/NzbDrone.Core/Localization/Core/bg.json",
@@ -105,15 +144,15 @@
   ],
   "validatorFileCount": 95,
   "testDirs": [
-    "test.sh",
-    "src/Radarr.Api.V3/ProviderTestAllResult.cs",
     "src/NzbDrone.Windows.Test",
     "src/NzbDrone.Update.Test",
-    "src/NzbDrone.Update/UpdateStartupContext.cs",
-    "src/NzbDrone.Test.Dummy",
-    "src/NzbDrone.Test.Common",
     "src/NzbDrone.Mono.Test",
     "src/NzbDrone.Libraries.Test",
-    "src/NzbDrone.Integration.Test"
+    "src/NzbDrone.Integration.Test",
+    "src/NzbDrone.Host.Test",
+    "src/NzbDrone.Core.Test",
+    "src/NzbDrone.Common.Test",
+    "src/NzbDrone.Automation.Test",
+    "src/NzbDrone.Api.Test"
   ]
 }

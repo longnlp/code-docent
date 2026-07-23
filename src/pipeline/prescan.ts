@@ -25,6 +25,14 @@ export interface PrescanReport {
   frameworks: string[];
   routeFiles: string[];
   controllerFiles: string[];
+  /** Where periodic/scheduled work is registered (the "every 30 min" source). */
+  scheduledTaskRegistrars: string[];
+  /** Command/job/worker files — background behavior with no UI/API entry point. */
+  backgroundJobFiles: string[];
+  /** Reactive background behavior (event handlers). Counted, not listed (often many). */
+  eventHandlerCount: number;
+  /** Periodic health/monitoring checks. */
+  healthCheckCount: number;
   localizationFiles: string[];
   validatorFileCount: number;
   testDirs: string[];
@@ -55,12 +63,27 @@ export function prescan(repoDir: string): PrescanReport {
   const langCounts: Record<string, number> = {};
   const routeFiles: string[] = [];
   const controllerFiles: string[] = [];
+  const scheduledTaskRegistrars: string[] = [];
+  const backgroundJobSet = new Set<string>();
   const localizationFiles: string[] = [];
   const testDirSet = new Set<string>();
+  let eventHandlerCount = 0;
+  let healthCheckCount = 0;
   let validatorFileCount = 0;
   let fileCount = 0;
   let hasCsproj = false;
   let hasReact = false;
+
+  // Background behavior that has no UI route or API controller entry point.
+  // Generic filename signal (any backend language); .NET gets precise
+  // content-based detection below.
+  const JOB_NAME_RE = /(Job|Worker|Consumer|Scheduler|BackgroundService|Cronjob)\.(cs|ts|js|jsx|tsx|py|go|java|rb|kt)$/i;
+
+  // Test files pollute behavior signals — exclude them. Segment-aware so
+  // "LatestVersion.cs" is not mistaken for a test.
+  const isTestPath = (rel: string): boolean =>
+    rel.split(path.sep).some((s) => /(^|\.)tests?$/i.test(s)) ||
+    /(Fixture|Tests?|\.spec|\.test)\.[a-z]+$/i.test(path.basename(rel));
 
   for (const file of walk(repoDir)) {
     fileCount++;
@@ -74,15 +97,27 @@ export function prescan(repoDir: string): PrescanReport {
     if (/routes?\.(tsx?|jsx?)$/i.test(base)) routeFiles.push(rel);
     if (base.endsWith('Controller.cs')) controllerFiles.push(rel);
     if (ext === '.json' && /(localization|locales|i18n|lang)/i.test(rel)) localizationFiles.push(rel);
-    if (/test/i.test(rel)) {
-      const top = rel.split(path.sep).find((seg) => /test/i.test(seg));
-      if (top) testDirSet.add(rel.slice(0, rel.indexOf(top) + top.length));
+    const testFile = isTestPath(rel);
+    if (JOB_NAME_RE.test(base) && !testFile) backgroundJobSet.add(rel);
+    if (testFile) {
+      const segs = rel.split(path.sep);
+      const idx = segs.findIndex((s: string) => /(^|\.)tests?$/i.test(s));
+      if (idx >= 0) testDirSet.add(segs.slice(0, idx + 1).join(path.sep));
     }
 
-    if (ext === '.cs') {
+    // Precise .NET content detection (one read per file, reused for all
+    // markers). Test files are excluded so behavior signals stay clean.
+    if (ext === '.cs' && !testFile) {
       try {
-        if (fs.statSync(file).size < 200_000 && fs.readFileSync(file, 'utf8').includes('AbstractValidator')) {
-          validatorFileCount++;
+        if (fs.statSync(file).size < 200_000) {
+          const content = fs.readFileSync(file, 'utf8');
+          if (content.includes('AbstractValidator')) validatorFileCount++;
+          // Registration site (`new ScheduledTask { Interval = ... }`), not
+          // every file that merely references the type.
+          if (content.includes('new ScheduledTask')) scheduledTaskRegistrars.push(rel);
+          if (/:\s*ICommand\b/.test(content) || content.includes('IExecute<')) backgroundJobSet.add(rel);
+          if (content.includes('IHandle<')) eventHandlerCount++;
+          if (content.includes('IProvideHealthCheck') || content.includes('HealthCheckBase')) healthCheckCount++;
         }
       } catch {
         /* skip unreadable */
@@ -113,6 +148,10 @@ export function prescan(repoDir: string): PrescanReport {
     frameworks,
     routeFiles: routeFiles.slice(0, 20),
     controllerFiles: controllerFiles.slice(0, 100),
+    scheduledTaskRegistrars: scheduledTaskRegistrars.slice(0, 8),
+    backgroundJobFiles: [...backgroundJobSet].slice(0, 80),
+    eventHandlerCount,
+    healthCheckCount,
     localizationFiles: localizationFiles.slice(0, 10),
     validatorFileCount,
     testDirs: [...testDirSet].slice(0, 10),

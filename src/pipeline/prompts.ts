@@ -21,13 +21,20 @@ Your ONLY tools are Read, Glob, and Grep — do not attempt Bash or any other to
 
 A deterministic pre-scan already extracted this skeleton — trust it and start from these entry points instead of exploring blindly:
 
-${JSON.stringify({ languages: pre.languages, frameworks: pre.frameworks, routeFiles: pre.routeFiles, controllerFiles: pre.controllerFiles.slice(0, 60), localizationFiles: pre.localizationFiles, testDirs: pre.testDirs }, null, 2)}
+${JSON.stringify({ languages: pre.languages, frameworks: pre.frameworks, routeFiles: pre.routeFiles, controllerFiles: pre.controllerFiles.slice(0, 60), scheduledTaskRegistrars: pre.scheduledTaskRegistrars, backgroundJobFiles: pre.backgroundJobFiles, eventHandlerCount: pre.eventHandlerCount, healthCheckCount: pre.healthCheckCount, localizationFiles: pre.localizationFiles, testDirs: pre.testDirs }, null, 2)}
 
 Project skill files (obey them, especially repo-map hints and exclusions):
 
 ${skills}
 
-Task: cluster the user-facing entry points (UI routes and API controller areas) into PRODUCT FEATURES — the units a product manager, QA engineer, or support agent would recognize ("Adding movies", "Quality profiles"), NOT code modules. Read route files and skim page/controller names as needed. 10-25 features is typical.
+Task: cluster the product's behavior into PRODUCT FEATURES — the units a product manager, QA engineer, or support agent would recognize ("Adding movies", "Quality profiles"), NOT code modules. 10-30 features is typical.
+
+Cover ALL THREE kinds of entry point, not just the UI:
+1. **User-facing screens** — UI routes and the API controllers behind them.
+2. **Background / automatic behavior** — scheduled tasks and background jobs that run on their own with no user click. READ the scheduledTaskRegistrars file(s) above to enumerate what runs automatically and how often (e.g. periodic release searches, backups, library refresh, cleanup/housekeeping, import-list sync, update checks). These are real features users ask about ("how often does it check?", "when does it back up?") — give them their own feature entries, grouped sensibly. Also account for health/monitoring checks and significant event-driven behavior.
+3. Anything in backgroundJobFiles that is product-meaningful but not tied to a screen.
+
+Read the registrar and a few page/controller/job files as needed.
 
 Output EXACTLY this structure:
 1. A markdown table: | # | Feature | User entry points | Key code areas |
@@ -57,6 +64,8 @@ Collect facts across these categories:
 - failure: every failure path with the EXACT user-facing message text (cross-reference localization files; quote strings verbatim; note when a message is hardcoded/non-localized)
 - lifecycle: everything that happens AFTER the user action, stage by stage — background jobs, schedules and retry intervals, notifications, where the user can watch progress on which screen
 - test: expected behaviors and edge cases encoded in tests (test names and assertions); also NOTE coverage gaps you observe
+
+If this feature is BACKGROUND / AUTOMATIC behavior (a scheduled task or job, not a screen), center the trace on: what TRIGGERS it (schedule + exact interval, or which event) and whether the interval is configurable; what it DOES, step by step; what the user can SEE or CONTROL (relevant settings, System→Tasks / Activity / History screens, and any health warnings it can raise) and where; and its failure modes. Use the 'lifecycle' category for these facts.
 
 Output EXACTLY one fenced block:
 \`\`\`yaml
