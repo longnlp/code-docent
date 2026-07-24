@@ -17,7 +17,12 @@ export function runSubprocess(
     onStdoutLine?: (line: string) => void;
   } = {},
 ): Promise<SubprocessResult> {
+  // CODEDOCENT_DEBUG live-echoes the exact command and the child's raw stdout
+  // AND stderr as they arrive — the way to see what a silent/hung CLI (e.g.
+  // copilot waiting on an approval or auth prompt) is actually doing.
+  const debug = !!process.env.CODEDOCENT_DEBUG;
   return new Promise((resolve, reject) => {
+    if (debug) process.stderr.write(`\n[debug] exec: ${cmd} ${args.join(' ')}\n`);
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
@@ -28,10 +33,12 @@ export function runSubprocess(
     let lineBuf = '';
     const timeout = setTimeout(() => {
       child.kill('SIGKILL');
-      reject(new Error(`${cmd} timed out after ${opts.timeoutMs}ms`));
+      const tail = debug ? '' : ' (re-run with CODEDOCENT_DEBUG=1 to see what it was doing)';
+      reject(new Error(`${cmd} timed out after ${opts.timeoutMs}ms${tail}`));
     }, opts.timeoutMs ?? 600_000);
     child.stdout.on('data', (d) => {
       stdout += d;
+      if (debug) process.stderr.write(`[debug:out] ${d}`);
       if (opts.onStdoutLine) {
         lineBuf += d;
         let nl;
@@ -41,7 +48,10 @@ export function runSubprocess(
         }
       }
     });
-    child.stderr.on('data', (d) => (stderr += d));
+    child.stderr.on('data', (d) => {
+      stderr += d;
+      if (debug) process.stderr.write(`[debug:err] ${d}`);
+    });
     child.on('error', (err) => {
       clearTimeout(timeout);
       reject(err);

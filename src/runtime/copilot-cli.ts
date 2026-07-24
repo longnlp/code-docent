@@ -28,15 +28,25 @@ export class CopilotCliRuntime implements AgentRuntime {
 
   async run(task: AgentTask): Promise<AgentResult> {
     const started = Date.now();
+    const debug = !!process.env.CODEDOCENT_DEBUG;
     task.onProgress?.({
       kind: 'status',
       detail: 'copilot -s mode gives no live tool stream — elapsed clock / heartbeat only',
     });
-    // --no-ask-user is critical headless: without it copilot pauses for
-    // confirmation and hangs until the timeout. read allowed, write/shell denied.
-    const args = ['-p', task.prompt, '-s', '--no-ask-user', '--deny-tool', 'write', '--deny-tool', 'shell'];
+    // Two copilot-specific gotchas, both of which cause a silent hang → timeout:
+    //  1. --no-ask-user: headless, without it copilot pauses for confirmation
+    //     and waits forever.
+    //  2. Copilot's tools are coarse (shell/write/read/url) — repo SEARCH
+    //     (grep/glob/ls) has no tool of its own, it runs through `shell`. So we
+    //     must ALLOW shell (scoped to read-only commands via copilot's filter
+    //     syntax) or the scanner cannot explore at all and stalls. `write` stays
+    //     denied; deny takes precedence, so mutation is still blocked.
+    const readonlyShell = ['grep', 'rg', 'ls', 'find', 'cat', 'head', 'tail', 'wc', 'sed', 'awk'];
+    const args = ['-p', task.prompt, '--no-ask-user', '--deny-tool', 'write'];
+    if (!debug) args.push('-s'); // debug: keep decoration/tool activity visible
     if (task.repoDir) {
       args.push('--allow-tool', 'read', '--add-dir', task.repoDir);
+      for (const cmd of readonlyShell) args.push('--allow-tool', `shell(${cmd})`);
     }
     if (task.model) args.push('--model', task.model);
 

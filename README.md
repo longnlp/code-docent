@@ -81,6 +81,29 @@ Under the hood: `copilot -p <prompt> -s --allow-tool read --deny-tool write
 Gemini CLI is analogous: `npm install -g @google/gemini-cli`, log in or set
 `GEMINI_API_KEY`, select `gemini-cli`.
 
+### Troubleshooting a runtime that hangs or times out
+
+If a run produces no output and then `… timed out`, it is almost always the CLI
+stalling (waiting on an approval/auth prompt), **not** the repo or prompt being
+too large — a stall gives zero output, whereas a large repo streams steady tool
+activity. Diagnose it directly:
+
+```bash
+CODEDOCENT_DEBUG=1 CODEDOCENT_TIMEOUT_MS=120000 \
+  npx tsx src/cli.ts scan --project myapp --repo /path/to/repo
+```
+
+`CODEDOCENT_DEBUG=1` live-echoes the exact command and the child CLI's raw
+stdout+stderr, so you can see what it is waiting on; the short timeout means you
+find out in 2 minutes, not 15.
+
+Copilot-specific note: copilot's tools are coarse (`shell`/`write`/`read`), and
+repo *search* (grep/ls/find) runs through its `shell` tool — so CodeDocent
+allows `shell` scoped to read-only commands while denying `write`. It also passes
+`--no-ask-user` so copilot can't pause for confirmation headless. If copilot
+still stalls, `CODEDOCENT_DEBUG=1` (which also drops `-s` for copilot) will show
+whether it is an auth or tool-approval prompt.
+
 ## Workspace layout
 
 ```
