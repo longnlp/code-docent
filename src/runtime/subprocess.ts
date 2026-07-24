@@ -53,6 +53,12 @@ export function runSubprocess(
   });
 }
 
+/** Per-run subprocess timeout; override with CODEDOCENT_TIMEOUT_MS (default 15 min). */
+export function defaultTimeoutMs(): number {
+  const v = Number(process.env.CODEDOCENT_TIMEOUT_MS);
+  return Number.isFinite(v) && v > 0 ? v : 900_000;
+}
+
 export async function binaryAvailable(cmd: string): Promise<string | null> {
   try {
     const r = await runSubprocess(cmd, ['--version'], { timeoutMs: 15_000 });

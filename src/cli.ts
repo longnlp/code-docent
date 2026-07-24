@@ -9,6 +9,11 @@
  *
  * Common flags: --runtime <name> (else CODEDOCENT_RUNTIME, else first usable),
  *               --model <name>
+ * Env: CODEDOCENT_RUNTIME, CODEDOCENT_TIMEOUT_MS (per-run agent timeout, default 15m).
+ *
+ * Progress: on a TTY, a single status line shows a live elapsed clock, step
+ * count, and last activity; piped/redirected, real events are logged and a
+ * quiet runtime heartbeats at most once a minute (with elapsed + step count).
  */
 
 import { RUNTIMES, resolveRuntime } from './runtime/index.js';
@@ -17,31 +22,88 @@ import { runPrescan, runScan } from './pipeline/scan.js';
 import { runWrite } from './pipeline/write.js';
 
 /**
- * Live progress printer: every event gets an elapsed-time prefix; if the
- * runtime goes quiet (e.g. copilot -s mode has no stream), a heartbeat line
- * shows the run is still alive.
+ * Live progress reporter. Two rendering modes so it works both interactively
+ * and when piped to a file/CI log:
+ *
+ * - **TTY**: one status line pinned at the bottom, redrawn every second with a
+ *   spinner + live elapsed clock + step count + last activity. Real events
+ *   (tool calls) scroll as permanent lines above it. No repeated spam.
+ * - **non-TTY** (piped/redirected, e.g. background task logs): real events are
+ *   logged as they arrive; when a runtime has no live stream (copilot -s), a
+ *   heartbeat prints at most once a minute — and shows the elapsed clock and
+ *   step count, so consecutive lines differ instead of repeating verbatim.
  */
-function progressPrinter(): { onProgress: (ev: AgentProgress) => void; done: () => void } {
+function progressPrinter(label: string): {
+  onProgress: (ev: AgentProgress) => void;
+  done: (summary?: string) => void;
+} {
   const started = Date.now();
-  let lastEventAt = Date.now();
-  const stamp = () => {
+  const isTTY = !!process.stdout.isTTY;
+  const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  let frame = 0;
+  let steps = 0;
+  let lastActivity = 'starting…';
+  let lastHeartbeatMs = 0;
+
+  const mmss = () => {
     const s = Math.floor((Date.now() - started) / 1000);
-    return `[${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}]`;
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   };
-  const heartbeat = setInterval(() => {
-    if (Date.now() - lastEventAt > 20_000) {
-      console.log(`  ${stamp()} … still working`);
-      lastEventAt = Date.now();
+
+  const drawStatus = () => {
+    if (!isTTY) return;
+    frame = (frame + 1) % spinner.length;
+    const line = `${spinner[frame]} ${mmss()}  ${label}  ·  ${steps} steps  ·  ${lastActivity}`;
+    const width = (process.stdout.columns ?? 120) - 1;
+    process.stdout.write('\r\x1b[2K' + line.slice(0, width));
+  };
+
+  const printLine = (text: string) => {
+    if (isTTY) {
+      process.stdout.write('\r\x1b[2K'); // clear the status line
+      console.log(text); // permanent scrollback line
+      drawStatus(); // redraw status beneath it
+    } else {
+      console.log(text);
     }
-  }, 5_000);
-  heartbeat.unref?.();
+  };
+
+  const ticker = setInterval(
+    () => {
+      if (isTTY) {
+        drawStatus();
+      } else {
+        const elapsed = Date.now() - started;
+        if (elapsed - lastHeartbeatMs >= 60_000) {
+          lastHeartbeatMs = elapsed;
+          console.log(`  [${mmss()}] still working — ${steps} steps so far`);
+        }
+      }
+    },
+    isTTY ? 1000 : 5000,
+  );
+  ticker.unref?.();
+
   return {
     onProgress: (ev) => {
-      lastEventAt = Date.now();
-      const icon = ev.kind === 'tool' ? '🔧' : ev.kind === 'status' ? '▸' : '·';
-      console.log(`  ${stamp()} ${icon} ${ev.detail.slice(0, 100)}`);
+      if (ev.kind === 'tool') {
+        steps++;
+        lastActivity = ev.detail;
+        printLine(`  [${mmss()}] 🔧 ${ev.detail.slice(0, 100)}`);
+      } else if (ev.kind === 'status') {
+        lastActivity = ev.detail;
+        printLine(`  [${mmss()}] ▸ ${ev.detail.slice(0, 100)}`);
+      } else {
+        // 'text' peeks: update the live line only; never spam the log.
+        lastActivity = ev.detail;
+        if (isTTY) drawStatus();
+      }
     },
-    done: () => clearInterval(heartbeat),
+    done: (summary?: string) => {
+      clearInterval(ticker);
+      if (isTTY) process.stdout.write('\r\x1b[2K');
+      if (summary) console.log(summary);
+    },
   };
 }
 
@@ -98,7 +160,7 @@ async function main(): Promise<void> {
     case 'scan': {
       const runtime = await resolveRuntime(args.flags.runtime);
       console.log(`scanning with runtime ${runtime.name}…`);
-      const progress = progressPrinter();
+      const progress = progressPrinter('scan');
       try {
         const { inventoryPath, features } = await runScan(
           need(args, 'project'),
@@ -123,7 +185,7 @@ async function main(): Promise<void> {
       }
       const runtime = await resolveRuntime(args.flags.runtime);
       console.log(`tracing + writing "${slug}" with runtime ${runtime.name}…`);
-      const progress = progressPrinter();
+      const progress = progressPrinter(`write ${slug}`);
       try {
         const out = await runWrite(
           need(args, 'project'),

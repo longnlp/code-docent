@@ -9,7 +9,7 @@
 
 import type { AgentRuntime, AgentTask, AgentResult, RuntimeCheck } from './types.js';
 import { RuntimeError } from './types.js';
-import { runSubprocess, binaryAvailable } from './subprocess.js';
+import { runSubprocess, binaryAvailable, defaultTimeoutMs } from './subprocess.js';
 
 export class CopilotCliRuntime implements AgentRuntime {
   readonly name = 'copilot-cli';
@@ -30,9 +30,11 @@ export class CopilotCliRuntime implements AgentRuntime {
     const started = Date.now();
     task.onProgress?.({
       kind: 'status',
-      detail: 'copilot -s mode has no live stream — heartbeat only until it finishes',
+      detail: 'copilot -s mode gives no live tool stream — elapsed clock / heartbeat only',
     });
-    const args = ['-p', task.prompt, '-s', '--deny-tool', 'write', '--deny-tool', 'shell'];
+    // --no-ask-user is critical headless: without it copilot pauses for
+    // confirmation and hangs until the timeout. read allowed, write/shell denied.
+    const args = ['-p', task.prompt, '-s', '--no-ask-user', '--deny-tool', 'write', '--deny-tool', 'shell'];
     if (task.repoDir) {
       args.push('--allow-tool', 'read', '--add-dir', task.repoDir);
     }
@@ -40,7 +42,7 @@ export class CopilotCliRuntime implements AgentRuntime {
 
     const r = await runSubprocess('copilot', args, {
       cwd: task.repoDir,
-      timeoutMs: task.timeoutMs ?? 900_000,
+      timeoutMs: task.timeoutMs ?? defaultTimeoutMs(),
     });
     if (r.code !== 0) {
       throw new RuntimeError(this.name, `exit ${r.code}: ${r.stderr.slice(0, 500) || r.stdout.slice(0, 500)}`);
