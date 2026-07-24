@@ -1,15 +1,31 @@
 /**
  * GitHub Copilot CLI adapter: drives `copilot -p` as a subprocess.
  * (The @github/copilot-sdk stdio interface was removed upstream, so the
- * supported programmatic surface is the CLI.) Read-only enforcement:
- * allow the `read` tool kind, deny `write` and `shell`, scope paths to the
- * repo via --add-dir. Auth: COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN
- * or prior interactive `copilot` login.
+ * supported programmatic surface is the CLI.)
+ *
+ * Read-only enforcement: allow the `read` tool + `shell` scoped to read-only
+ * commands (repo SEARCH — grep/ls/find — has no dedicated tool in copilot, it
+ * runs through `shell`), deny `write`. Auth: COPILOT_GITHUB_TOKEN > GH_TOKEN >
+ * GITHUB_TOKEN or a prior interactive `copilot` login.
+ *
+ * We do NOT use `-s`: it suppresses copilot's activity output, leaving the run
+ * silent so you can't tell "working" from "stuck". Instead we stream copilot's
+ * activity lines as live progress and reconstruct the answer from the rest;
+ * downstream fenced-block extraction (json / yaml) is robust to the remaining
+ * decoration.
  */
 
 import type { AgentRuntime, AgentTask, AgentResult, RuntimeCheck } from './types.js';
 import { RuntimeError } from './types.js';
-import { runSubprocess, binaryAvailable, defaultTimeoutMs } from './subprocess.js';
+import { runSubprocess, binaryAvailable, defaultTimeoutMs, idleTimeoutMs } from './subprocess.js';
+
+// Copilot renders tool activity as a box-drawing tree, e.g.
+//   ● Read Foo.cs
+//     │ Foo.cs
+//     └ 77 lines read
+// Header lines start with ●/○/►; continuation lines with │/└/├.
+const ACTIVITY_HEADER = /^\s*[●○◍►▶]/u;
+const ACTIVITY_CONT = /^\s*[│└├╰╭─⎿]/u;
 
 export class CopilotCliRuntime implements AgentRuntime {
   readonly name = 'copilot-cli';
@@ -28,39 +44,42 @@ export class CopilotCliRuntime implements AgentRuntime {
 
   async run(task: AgentTask): Promise<AgentResult> {
     const started = Date.now();
-    const debug = !!process.env.CODEDOCENT_DEBUG;
-    task.onProgress?.({
-      kind: 'status',
-      detail: 'copilot -s mode gives no live tool stream — elapsed clock / heartbeat only',
-    });
-    // Two copilot-specific gotchas, both of which cause a silent hang → timeout:
-    //  1. --no-ask-user: headless, without it copilot pauses for confirmation
-    //     and waits forever.
-    //  2. Copilot's tools are coarse (shell/write/read/url) — repo SEARCH
-    //     (grep/glob/ls) has no tool of its own, it runs through `shell`. So we
-    //     must ALLOW shell (scoped to read-only commands via copilot's filter
-    //     syntax) or the scanner cannot explore at all and stalls. `write` stays
-    //     denied; deny takes precedence, so mutation is still blocked.
+    // --no-ask-user: headless, copilot must not pause for confirmation.
+    // shell(<cmd>) allowances let the agent search the repo read-only; write denied.
     const readonlyShell = ['grep', 'rg', 'ls', 'find', 'cat', 'head', 'tail', 'wc', 'sed', 'awk'];
     const args = ['-p', task.prompt, '--no-ask-user', '--deny-tool', 'write'];
-    if (!debug) args.push('-s'); // debug: keep decoration/tool activity visible
     if (task.repoDir) {
       args.push('--allow-tool', 'read', '--add-dir', task.repoDir);
       for (const cmd of readonlyShell) args.push('--allow-tool', `shell(${cmd})`);
     }
     if (task.model) args.push('--model', task.model);
 
+    // Separate activity (→ live progress) from the answer (→ result text).
+    const answerLines: string[] = [];
+    const onStdoutLine = (line: string) => {
+      if (ACTIVITY_HEADER.test(line)) {
+        task.onProgress?.({ kind: 'tool', detail: line.replace(ACTIVITY_HEADER, '').trim() });
+      } else if (!ACTIVITY_CONT.test(line)) {
+        answerLines.push(line);
+      }
+    };
+
     const r = await runSubprocess('copilot', args, {
       cwd: task.repoDir,
       timeoutMs: task.timeoutMs ?? defaultTimeoutMs(),
+      idleTimeoutMs: idleTimeoutMs(),
+      onStdoutLine,
     });
     if (r.code !== 0) {
-      throw new RuntimeError(this.name, `exit ${r.code}: ${r.stderr.slice(0, 500) || r.stdout.slice(0, 500)}`);
+      throw new RuntimeError(
+        this.name,
+        `exit ${r.code}: ${r.stderr.slice(0, 500) || r.stdout.slice(0, 500)}`,
+      );
     }
-    const text = r.stdout.trim();
-    if (!text) throw new RuntimeError(this.name, 'empty response');
+    const text = answerLines.join('\n').trim();
+    if (!text) throw new RuntimeError(this.name, 'empty response (only activity, no answer text)');
 
-    // The CLI does not report token usage in -s mode.
+    // copilot does not emit token usage on stdout.
     return {
       text,
       usage: { inputTokens: 0, outputTokens: 0 },

@@ -9,7 +9,7 @@
 
 import type { AgentRuntime, AgentTask, AgentResult, RuntimeCheck } from './types.js';
 import { RuntimeError } from './types.js';
-import { runSubprocess, binaryAvailable, defaultTimeoutMs } from './subprocess.js';
+import { runSubprocess, binaryAvailable, defaultTimeoutMs, idleTimeoutMs } from './subprocess.js';
 
 function bin(): string {
   return process.env.GEMINI_BIN ?? 'gemini';
@@ -37,6 +37,7 @@ export class GeminiCliRuntime implements AgentRuntime {
     const r = await runSubprocess(bin(), args, {
       cwd: task.repoDir,
       timeoutMs: task.timeoutMs ?? defaultTimeoutMs(),
+      idleTimeoutMs: idleTimeoutMs(),
       // gemini streams its output progressively; surface a truncated peek
       onStdoutLine: task.onProgress
         ? (line) => line.trim() && task.onProgress!({ kind: 'text', detail: line.trim().slice(0, 80) })

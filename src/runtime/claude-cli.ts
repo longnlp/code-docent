@@ -6,7 +6,7 @@
 
 import type { AgentRuntime, AgentTask, AgentResult, RuntimeCheck } from './types.js';
 import { RuntimeError } from './types.js';
-import { runSubprocess, binaryAvailable, defaultTimeoutMs } from './subprocess.js';
+import { runSubprocess, binaryAvailable, defaultTimeoutMs, idleTimeoutMs } from './subprocess.js';
 
 export class ClaudeCliRuntime implements AgentRuntime {
   readonly name = 'claude-cli';
@@ -59,6 +59,7 @@ export class ClaudeCliRuntime implements AgentRuntime {
     const r = await runSubprocess('claude', args, {
       cwd: task.repoDir,
       timeoutMs: task.timeoutMs ?? defaultTimeoutMs(),
+      idleTimeoutMs: idleTimeoutMs(),
       onStdoutLine,
     });
     if (r.code !== 0) {

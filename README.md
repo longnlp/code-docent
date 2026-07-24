@@ -83,10 +83,13 @@ Gemini CLI is analogous: `npm install -g @google/gemini-cli`, log in or set
 
 ### Troubleshooting a runtime that hangs or times out
 
-If a run produces no output and then `… timed out`, it is almost always the CLI
-stalling (waiting on an approval/auth prompt), **not** the repo or prompt being
-too large — a stall gives zero output, whereas a large repo streams steady tool
-activity. Diagnose it directly:
+CodeDocent distinguishes **stuck** from **slow** by *output*, not a fixed clock:
+a run is killed only after `CODEDOCENT_IDLE_TIMEOUT_MS` (default 5 min) with **no
+output at all**. A runtime that keeps streaming tool activity (copilot reading
+files, claude running tools) is never killed for merely being slow — only genuine
+silence counts as stuck (with a 30-min absolute backstop, `CODEDOCENT_TIMEOUT_MS`).
+
+To see the activity live and diagnose a suspected hang directly:
 
 ```bash
 CODEDOCENT_DEBUG=1 CODEDOCENT_TIMEOUT_MS=120000 \
