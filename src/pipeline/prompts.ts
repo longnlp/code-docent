@@ -31,16 +31,14 @@ Task: cluster the product's behavior into PRODUCT FEATURES — the units a produ
 
 Cover ALL THREE kinds of entry point, not just the UI:
 1. **User-facing screens** — UI routes and the API controllers behind them.
-2. **Background / automatic behavior** — scheduled tasks and background jobs that run on their own with no user click. These are real features users ask about ("how often does it check?", "when does it back up?") — give them their own feature entries, grouped sensibly. Also account for health/monitoring checks and significant event-driven behavior.
+2. **Background / automatic behavior** — scheduled tasks and jobs that run on their own with no user click (periodic searches, backups, refresh, cleanup, import-list sync, update checks). Real features users ask about ("how often does it check?", "when does it back up?"). Also health/monitoring checks.
 3. Anything in backgroundJobFiles that is product-meaningful but not tied to a screen.
 
-DISCOVERING BACKGROUND WORK — do this actively; do NOT rely on file names. A background job may be named anything (NightlyReconciler, Sweeper, DoWork) — it is identified by HOW IT IS WIRED, not what it is called. The scheduledTaskRegistrars / backgroundJobFiles lists above are starting points, not the full set. Also:
-- READ the scheduled-task registrar(s) and any application startup / dependency-injection wiring to enumerate everything registered to run, then follow each registration to its implementation regardless of its name.
-- GREP for the scheduling/queue mechanisms this stack uses, e.g.: new ScheduledTask, AddHostedService, BackgroundService/IHostedService, RecurringJob./BackgroundJob (Hangfire), @Scheduled/@Async (Spring), @shared_task/@app.task/beat_schedule (Celery), add_job/BackgroundScheduler (APScheduler), cron.schedule/new CronJob/@Cron (node-cron/NestJS), new Worker(/Queue (BullMQ), Sidekiq::Job/perform_async/ActiveJob (Ruby), time.NewTicker/gocron (Go), @KafkaListener/@RabbitListener (message consumers).
-- CHECK infra for schedules declared outside code: Procfile worker processes, Kubernetes CronJob manifests, crontab / systemd .timer files, cron config.
-- Obey any background-location hints in the repo-map skill file above.
-
-Read the registrar, startup wiring, infra, and a few page/controller/job files as needed.
+WORK EFFICIENTLY — this is a coarse clustering pass, not a deep read. The pre-scan lists above were already produced by exhaustive, mechanism-based (name-agnostic) detection — TRUST them:
+- Cluster PRIMARILY from the provided lists and file/route names, which are usually self-describing (e.g. MovieController → "Movies"; /settings/profiles → "Quality profiles"; a file in backgroundJobFiles → a background feature). Do NOT open a file whose feature is obvious from its name.
+- READ ONLY when needed, and keep it to a **budget of ~8-12 file reads total**: the scheduled-task registrar(s) once, to list the automatic jobs + their intervals; the main routes file once; and a handful of genuinely ambiguous cases. Do NOT read every controller or job file.
+- Only if a repo-map hint or an obvious gap suggests missing background work should you do a single targeted grep — the lists already cover mechanism-detected jobs, so re-scanning the repo is wasted effort.
+- The per-feature deep trace happens later (Pass 2); you do not need every detail now.
 
 Output EXACTLY this structure:
 1. A markdown table: | # | Feature | User entry points | Key code areas |
