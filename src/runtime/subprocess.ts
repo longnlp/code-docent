@@ -64,12 +64,13 @@ export function runSubprocess(
           if (Date.now() - lastActivity > opts.idleTimeoutMs!) {
             finish(() => {
               child.kill('SIGKILL');
-              const tail = debug ? '' : ' — re-run with CODEDOCENT_DEBUG=1 to inspect';
-              reject(
-                new Error(
-                  `${cmd} produced no output for ${opts.idleTimeoutMs}ms — treating as stuck${tail}`,
-                ),
-              );
+              const secs = Math.round(opts.idleTimeoutMs! / 1000);
+              const tail = debug
+                ? ''
+                : ' — this is either a genuine hang OR a slow answer being generated' +
+                  ' without streaming; raise CODEDOCENT_IDLE_TIMEOUT_MS, or run with' +
+                  ' CODEDOCENT_DEBUG=1 to see which';
+              reject(new Error(`${cmd} produced no output for ${secs}s — treating as stuck${tail}`));
             });
           }
         }, Math.max(5_000, Math.min(opts.idleTimeoutMs, 15_000)))

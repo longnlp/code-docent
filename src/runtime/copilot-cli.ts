@@ -67,7 +67,11 @@ export class CopilotCliRuntime implements AgentRuntime {
     const r = await runSubprocess('copilot', args, {
       cwd: task.repoDir,
       timeoutMs: task.timeoutMs ?? defaultTimeoutMs(),
-      idleTimeoutMs: idleTimeoutMs(),
+      // Copilot does not stream its final answer — it goes silent while the
+      // model writes the whole response, then prints it at once. So its idle
+      // window must tolerate a full silent generation; use a higher floor than
+      // the streaming runtimes.
+      idleTimeoutMs: Math.max(idleTimeoutMs(), 900_000),
       onStdoutLine,
     });
     if (r.code !== 0) {

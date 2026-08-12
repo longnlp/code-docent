@@ -40,13 +40,11 @@ WORK EFFICIENTLY — this is a coarse clustering pass, not a deep read. The pre-
 - Only if a repo-map hint or an obvious gap suggests missing background work should you do a single targeted grep — the lists already cover mechanism-detected jobs, so re-scanning the repo is wasted effort.
 - The per-feature deep trace happens later (Pass 2); you do not need every detail now.
 
-Output EXACTLY this structure:
-1. A markdown table: | # | Feature | User entry points | Key code areas |
-2. A fenced json block:
+Output ONLY a single fenced json block — no table, no prose before or after (the human-readable inventory is rendered from this json). Keep it compact:
 \`\`\`json
 {"features": [{"slug": "kebab-case", "name": "Feature name", "description": "one sentence", "entryPoints": ["/route", "..."], "codeAreas": ["path/prefix", "..."]}]}
 \`\`\`
-No other commentary. Every feature MUST have at least one entry point or code area you actually saw.`;
+Every feature MUST have at least one entry point or code area you actually saw. Do not repeat the list in any other form.`;
 }
 
 export function tracerPrompt(feature: FeatureSpec, skills: string, commit: string, factStartId = 1): string {
