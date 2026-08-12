@@ -54,15 +54,21 @@ export class CopilotCliRuntime implements AgentRuntime {
     }
     if (task.model) args.push('--model', task.model);
 
-    // Separate activity (→ live progress) from the answer (→ result text).
-    const answerLines: string[] = [];
+    // Emit activity lines as live progress. We do NOT drop them from the result
+    // text — for the exploration roles the answer is pulled out by fenced/loose
+    // JSON/YAML extraction downstream, and dropping lines risks eating a boxed
+    // answer (copilot may wrap output in a "│ " gutter). Only the verbatim
+    // writer/answerer roles get activity stripped, for a clean page body.
+    const activityLines: string[] = [];
     const onStdoutLine = (line: string) => {
       if (ACTIVITY_HEADER.test(line)) {
         task.onProgress?.({ kind: 'tool', detail: line.replace(ACTIVITY_HEADER, '').trim() });
-      } else if (!ACTIVITY_CONT.test(line)) {
-        answerLines.push(line);
+        activityLines.push(line);
+      } else if (ACTIVITY_CONT.test(line)) {
+        activityLines.push(line);
       }
     };
+    const verbatim = task.role === 'writer' || task.role === 'answerer';
 
     const r = await runSubprocess('copilot', args, {
       cwd: task.repoDir,
@@ -80,8 +86,19 @@ export class CopilotCliRuntime implements AgentRuntime {
         `exit ${r.code}: ${r.stderr.slice(0, 500) || r.stdout.slice(0, 500)}`,
       );
     }
-    const text = answerLines.join('\n').trim();
-    if (!text) throw new RuntimeError(this.name, 'empty response (only activity, no answer text)');
+    // Exploration roles (scanner/tracer): return the FULL raw output so
+    // downstream extraction can find the JSON/YAML however copilot framed it.
+    // Verbatim roles: remove the activity tree for a clean page body.
+    let text = r.stdout.trim();
+    if (verbatim && activityLines.length) {
+      const drop = new Set(activityLines);
+      text = r.stdout
+        .split('\n')
+        .filter((l) => !drop.has(l))
+        .join('\n')
+        .trim();
+    }
+    if (!text) throw new RuntimeError(this.name, 'empty response from copilot');
 
     // copilot does not emit token usage on stdout.
     return {

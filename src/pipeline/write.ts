@@ -52,7 +52,14 @@ export async function runWrite(
     logRun(ws, 'tracer', `write ${slug}`, traced);
 
     factsYaml = extractFenced(traced.text, 'yaml') ?? extractFenced(traced.text, '') ?? '';
-    if (!factsYaml) throw new Error('tracer returned no fenced fact sheet');
+    if (!factsYaml) {
+      const dump = path.join(ws.root, `tracer-raw-${slug}.txt`);
+      fs.writeFileSync(dump, traced.text);
+      throw new Error(
+        `tracer returned no fenced fact sheet (raw output saved to ${dump}).\n` +
+          `First 400 chars:\n${traced.text.slice(0, 400)}`,
+      );
+    }
     const parsed = YAML.parse(factsYaml);
     facts = (parsed?.facts ?? []) as Fact[];
     const invalid = facts.filter((f) => !f.id || !f.claim || !f.anchors?.length);

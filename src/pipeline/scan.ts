@@ -17,6 +17,54 @@ export function extractFenced(text: string, lang: string): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * Find a JSON object containing "features" anywhere in the text, even without a
+ * ```json fence (some runtimes return raw JSON or wrap it in prose). Balances
+ * braces from the first `{` before the "features" key. Tolerant of a leading
+ * gutter (e.g. copilot may box output with "│ " on each line) by stripping a
+ * common one-line prefix before parsing.
+ */
+export function extractJson(text: string): string | null {
+  const fenced = extractFenced(text, 'json') ?? extractFenced(text, 'JSON');
+  const candidates: string[] = [];
+  if (fenced) candidates.push(fenced);
+
+  const key = text.indexOf('"features"');
+  if (key >= 0) {
+    const start = text.lastIndexOf('{', key);
+    if (start >= 0) {
+      let depth = 0;
+      for (let j = start; j < text.length; j++) {
+        if (text[j] === '{') depth++;
+        else if (text[j] === '}' && --depth === 0) {
+          candidates.push(text.slice(start, j + 1));
+          break;
+        }
+      }
+    }
+  }
+
+  for (const c of candidates) {
+    for (const variant of [c, stripLineGutters(c)]) {
+      try {
+        const obj = JSON.parse(variant);
+        if (obj && Array.isArray(obj.features)) return variant;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  return null;
+}
+
+/** Strip a repeated leading gutter (│, |, >, *) that CLI panels add to each line. */
+function stripLineGutters(s: string): string {
+  return s
+    .split('\n')
+    .map((l) => l.replace(/^\s*[│|>*]\s?/, ''))
+    .join('\n');
+}
+
 export async function runPrescan(project: string, repoDir: string): Promise<string> {
   const ws = openWorkspace(project);
   const report = prescan(repoDir);
@@ -44,8 +92,15 @@ export async function runScan(
     const result = await runtime.run({ role: 'scanner', prompt, repoDir, model, maxTurns: 30, onProgress });
     logRun(ws, 'scanner', 'scan', result);
 
-    const json = extractFenced(result.text, 'json');
-    if (!json) throw new Error('scanner returned no ```json block');
+    const json = extractJson(result.text);
+    if (!json) {
+      const dump = path.join(ws.root, 'scanner-raw-output.txt');
+      fs.writeFileSync(dump, result.text);
+      throw new Error(
+        `scanner returned no parseable JSON (raw output saved to ${dump}).\n` +
+          `First 400 chars of what the model returned:\n${result.text.slice(0, 400)}`,
+      );
+    }
     features = (JSON.parse(json).features ?? []) as FeatureSpec[];
     if (features.length === 0) throw new Error('scanner returned zero features');
 
